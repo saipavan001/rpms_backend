@@ -1,0 +1,154 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model OrganizationUnitType {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+  is_active   Boolean  @default(true)
+
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  organization_units              OrganizationUnit[]
+  parent_hierarchy_relations      OrganizationUnitTypeHierarchy[] @relation("ParentOUType")
+  child_hierarchy_relations       OrganizationUnitTypeHierarchy[] @relation("ChildOUType")
+}
+
+
+model OrganizationUnitTypeHierarchy {
+  id                  String @id @default(uuid())
+
+  parent_ou_type_id   String
+  child_ou_type_id    String
+
+  display_order       Int?
+  is_active           Boolean @default(true)
+
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  parent_ou_type OrganizationUnitType @relation("ParentOUType",fields: [parent_ou_type_id],references: [id])
+
+  child_ou_type OrganizationUnitType @relation("ChildOUType",fields: [child_ou_type_id],references: [id])
+
+  @@unique([parent_ou_type_id, child_ou_type_id])
+}
+
+model OrganizationUnit {
+  id              String @id @default(uuid())
+
+  code            String @unique
+  name            String
+  short_name      String?
+  description     String?
+
+  ou_type_id      String
+  parent_ou_id    String?
+
+  is_active       Boolean @default(true)
+
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  ou_type OrganizationUnitType @relation(fields: [ou_type_id],references: [id])
+
+  parent_ou OrganizationUnit? @relation("OUHierarchy",fields: [parent_ou_id],references: [id])
+
+  child_ous OrganizationUnit[] @relation("OUHierarchy")
+
+  employees Employee[]
+}
+
+
+model Employee {
+  id                String @id @default(uuid())
+
+  employee_code     String @unique
+  employee_name     String
+
+  email_official    String @unique
+  email_personal    String?
+
+  phone_number      String?
+
+  employment_type   String
+
+  joining_date      DateTime?
+
+  ou_id             String
+
+  is_active         Boolean @default(true)
+
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  organization_unit OrganizationUnit @relation(fields: [ou_id],references: [id])
+
+  user User?
+}
+
+
+model Role {
+  id           String @id @default(uuid())
+
+  code         String @unique
+  name         String
+  description  String?
+
+  is_active    Boolean @default(true)
+
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  user_roles UserRole[]
+}
+
+
+model User {
+  id              String @id @default(uuid())
+
+  username        String @unique
+  password_hash   String
+
+  employee_id     String? @unique
+
+  is_active       Boolean @default(true)
+
+  last_login_at   DateTime?
+
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  employee Employee? @relation(fields: [employee_id],references: [id])
+
+  user_roles UserRole[]
+}
+
+
+model UserRole {
+  id                  String @id @default(uuid())
+
+  user_id             String
+  role_id             String
+
+  is_active           Boolean @default(true)
+
+  assigned_at         DateTime @default(now())
+
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  user User @relation(fields: [user_id],references: [id])
+
+  role Role @relation(fields: [role_id],references: [id])
+
+  @@unique([user_id, role_id])
+}
