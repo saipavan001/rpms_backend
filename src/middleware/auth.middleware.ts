@@ -1,10 +1,23 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
 import prisma from '../config/prisma';
+import { ACCESS_TOKEN_COOKIE } from '../modules/auth/cookie.util';
+import { verifyAccessToken } from '../modules/auth/token.service';
 
-type AccessTokenPayload = {
-  userId: string;
-  username: string;
+const extractAccessToken = (req: Request): string | null => {
+  const cookieToken = req.cookies?.[ACCESS_TOKEN_COOKIE];
+  if (typeof cookieToken === 'string' && cookieToken.trim()) {
+    return cookieToken.trim();
+  }
+
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith('Bearer ')) {
+    const headerToken = authHeader.slice(7).trim();
+    if (headerToken) {
+      return headerToken;
+    }
+  }
+
+  return null;
 };
 
 export const authenticate = async (
@@ -13,16 +26,7 @@ export const authenticate = async (
   next: NextFunction
 ) => {
   try {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader?.startsWith('Bearer ')) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication required',
-      });
-    }
-
-    const token = authHeader.slice(7).trim();
+    const token = extractAccessToken(req);
 
     if (!token) {
       return res.status(401).json({
@@ -31,17 +35,7 @@ export const authenticate = async (
       });
     }
 
-    if (!process.env.JWT_SECRET) {
-      return res.status(500).json({
-        success: false,
-        message: 'JWT secret is not configured',
-      });
-    }
-
-    const payload = jwt.verify(
-      token,
-      process.env.JWT_SECRET
-    ) as AccessTokenPayload;
+    const payload = verifyAccessToken(token);
 
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },

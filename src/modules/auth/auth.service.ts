@@ -1,30 +1,13 @@
 import prisma from '../../config/prisma';
 import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
 import { ROLE_CODES } from '../../constants/roles';
 import { getRolesByCodes } from '../roles/role.service';
-import { getUserProfile } from '../users/user.service';
+import { createAuthSession } from './token.service';
 
 export type EmployeeSignupInput = {
   employee_code: string;
   username: string;
   password: string;
-};
-
-const issueAuthToken = async (userId: string, username: string) => {
-  const profile = await getUserProfile(userId);
-
-  if (!profile || profile.roles.length === 0) {
-    throw new Error('User has no active roles assigned');
-  }
-
-  const token = jwt.sign(
-    { userId, username },
-    process.env.JWT_SECRET as string,
-    { expiresIn: '1d' }
-  );
-
-  return { token, user: profile };
 };
 
 export const loginUser = async (username: string, password: string) => {
@@ -47,7 +30,7 @@ export const loginUser = async (username: string, password: string) => {
     data: { last_login_at: new Date() },
   });
 
-  return issueAuthToken(user.id, user.username);
+  return createAuthSession(user.id, user.username);
 };
 
 export const registerEmployeeAccount = async (input: EmployeeSignupInput) => {
@@ -124,5 +107,5 @@ export const registerEmployeeAccount = async (input: EmployeeSignupInput) => {
     data: { last_login_at: new Date() },
   });
 
-  return issueAuthToken(user.id, user.username);
+  return createAuthSession(user.id, user.username);
 };

@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import authRoutes from './modules/auth/auth.routes';
 import orgUnitTypeRoutes from './modules/org-unit-types/org-unit-type.routes';
 import orgUnitTypeHierarchyRoutes from './modules/org-unit-type-hierarchies/org-unit-type-hierarchy.routes';
@@ -11,7 +12,15 @@ import roleRoutes from './modules/roles/role.routes';
 
 const app = express();
 
-app.use(cors());
+const frontendOrigin = process.env.FRONTEND_URL ?? 'http://localhost:5173';
+
+app.use(
+  cors({
+    origin: frontendOrigin,
+    credentials: true,
+  })
+);
+app.use(cookieParser());
 app.use(express.json());
 app.use('/auth', authRoutes);
 app.use('/users', userRoutes);
