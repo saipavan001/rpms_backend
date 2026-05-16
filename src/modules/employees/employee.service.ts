@@ -1,5 +1,6 @@
 import prisma from '../../config/prisma';
 import { Prisma } from '@prisma/client';
+import { parseFlexibleDate } from '../../utils/parse-date';
 
 export type CreateEmployeeInput = {
   employee_code: string;
@@ -31,22 +32,6 @@ const employeeInclude = {
   },
 } satisfies Prisma.EmployeeInclude;
 
-const parseJoiningDate = (
-  value: string | Date | null | undefined
-): Date | null | undefined => {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (value === null) {
-    return null;
-  }
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    throw new Error('joining_date must be a valid date');
-  }
-  return date;
-};
-
 export const createEmployee = async (data: CreateEmployeeInput) => {
   return prisma.employee.create({
     data: {
@@ -56,7 +41,7 @@ export const createEmployee = async (data: CreateEmployeeInput) => {
       email_personal: data.email_personal?.trim() || null,
       phone_number: data.phone_number?.trim() || null,
       employment_type: data.employment_type.trim(),
-      joining_date: parseJoiningDate(data.joining_date) ?? null,
+      joining_date: parseFlexibleDate(data.joining_date) ?? null,
       ou_id: data.ou_id,
       is_active: data.is_active ?? true,
     },
@@ -109,7 +94,7 @@ export const updateEmployee = async (
     updateData.employment_type = data.employment_type.trim();
   }
   if (data.joining_date !== undefined) {
-    updateData.joining_date = parseJoiningDate(data.joining_date) ?? null;
+    updateData.joining_date = parseFlexibleDate(data.joining_date) ?? null;
   }
   if (data.ou_id !== undefined) {
     updateData.organization_unit = { connect: { id: data.ou_id } };
