@@ -5,18 +5,48 @@ const prisma = new PrismaClient();
 
 async function main() {
 
-  // Create SUPER_ADMIN role
   const superAdminRole = await prisma.role.upsert({
-    where: {
-      code: 'SUPER_ADMIN'
-    },
+    where: { code: 'SUPER_ADMIN' },
     update: {},
     create: {
       code: 'SUPER_ADMIN',
       name: 'Super Admin',
-      description: 'System Super Administrator',
-      is_active: true
-    }
+      description: 'Full system access including user management',
+      is_active: true,
+    },
+  });
+
+  await prisma.role.upsert({
+    where: { code: 'ADMIN' },
+    update: {},
+    create: {
+      code: 'ADMIN',
+      name: 'Administrator',
+      description: 'Manage org structure and employees',
+      is_active: true,
+    },
+  });
+
+  await prisma.role.upsert({
+    where: { code: 'EMPLOYEE' },
+    update: {},
+    create: {
+      code: 'EMPLOYEE',
+      name: 'Employee',
+      description: 'Employee portal welcome page only (module access coming later)',
+      is_active: true,
+    },
+  });
+
+  await prisma.role.upsert({
+    where: { code: 'GUEST' },
+    update: {},
+    create: {
+      code: 'GUEST',
+      name: 'Guest',
+      description: 'Read-only administrative access (no employee link)',
+      is_active: true,
+    },
   });
 
   // Hash password
@@ -51,7 +81,7 @@ async function main() {
     }
   });
 
-  console.log('Super Admin Seeded Successfully');
+  console.log('Roles and Super Admin seeded successfully');
 }
 
 main()

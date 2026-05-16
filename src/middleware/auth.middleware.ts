@@ -45,7 +45,15 @@ export const authenticate = async (
 
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { id: true, is_active: true },
+      select: {
+        id: true,
+        username: true,
+        is_active: true,
+        user_roles: {
+          where: { is_active: true, role: { is_active: true } },
+          select: { role: { select: { code: true } } },
+        },
+      },
     });
 
     if (!user?.is_active) {
@@ -55,8 +63,18 @@ export const authenticate = async (
       });
     }
 
+    const roles = user.user_roles.map((assignment) => assignment.role.code);
+
+    if (roles.length === 0) {
+      return res.status(403).json({
+        success: false,
+        message: 'User has no active roles assigned',
+      });
+    }
+
     req.userId = user.id;
-    req.username = payload.username;
+    req.username = user.username;
+    req.roles = roles;
     next();
   } catch {
     return res.status(401).json({
