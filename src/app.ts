@@ -8,6 +8,8 @@ import organizationUnitRoutes from './modules/organization-units/organization-un
 import employeeRoutes from './modules/employees/employee.routes';
 import userRoutes from './modules/users/user.routes';
 import roleRoutes from './modules/roles/role.routes';
+import auditLogRoutes from './modules/audit-log/audit-log.routes';
+import { auditMiddleware } from './middleware/audit.middleware';
 
 
 const app = express();
@@ -32,6 +34,7 @@ app.use(
 );
 app.use(cookieParser());
 app.use(express.json());
+app.use(auditMiddleware);
 app.use('/auth', authRoutes);
 app.use('/users', userRoutes);
 app.use('/roles', roleRoutes);
@@ -39,10 +42,11 @@ app.use('/org-unit-types', orgUnitTypeRoutes);
 app.use('/org-unit-type-hierarchies', orgUnitTypeHierarchyRoutes);
 app.use('/organization-units', organizationUnitRoutes);
 app.use('/employees', employeeRoutes);
+app.use('/audit-logs', auditLogRoutes);
 
 
 app.get('/', (_req, res) => {
-  res.send('RPMS API Running');
+  res.send('UNIFY API Running');
 });
 
 export default app;

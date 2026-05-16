@@ -1,17 +1,23 @@
 import { Request, Response } from 'express';
 import { loginUser, registerEmployeeAccount } from './auth.service';
-import { clearAuthCookies, REFRESH_TOKEN_COOKIE, setAuthCookies } from './cookie.util';
+import { clearAuthCookies, ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE, setAuthCookies } from './cookie.util';
 import {
   revokeSessionsByRefreshToken,
   rotateAuthSession,
+  verifyAccessToken,
 } from './token.service';
 import { getUserProfile } from '../users/user.service';
 
 const sendAuthResponse = (
+  req: Request,
   res: Response,
   status: number,
   session: Awaited<ReturnType<typeof loginUser>>
 ) => {
+  req.userId = session.user.id;
+  req.username = session.user.username;
+  req.roles = session.user.roles;
+
   setAuthCookies(res, session.accessToken, session.refreshToken);
 
   return res.status(status).json({
@@ -24,7 +30,7 @@ export const login = async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;
     const session = await loginUser(username, password);
-    return sendAuthResponse(res, 200, session);
+    return sendAuthResponse(req, res, 200, session);
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : 'Invalid username or password';
@@ -46,7 +52,7 @@ export const registerEmployee = async (req: Request, res: Response) => {
       password,
     });
 
-    return sendAuthResponse(res, 201, session);
+    return sendAuthResponse(req, res, 201, session);
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : 'Registration failed';
@@ -77,7 +83,7 @@ export const refresh = async (req: Request, res: Response) => {
     }
 
     const session = await rotateAuthSession(rawRefreshToken);
-    return sendAuthResponse(res, 200, session);
+    return sendAuthResponse(req, res, 200, session);
   } catch {
     clearAuthCookies(res);
     return res.status(401).json({
@@ -89,6 +95,17 @@ export const refresh = async (req: Request, res: Response) => {
 
 export const logout = async (req: Request, res: Response) => {
   try {
+    const accessToken = req.cookies?.[ACCESS_TOKEN_COOKIE];
+    if (typeof accessToken === 'string' && accessToken.trim()) {
+      try {
+        const payload = verifyAccessToken(accessToken.trim());
+        req.userId = payload.userId;
+        req.username = payload.username;
+      } catch {
+        // Expired or invalid access token — still process logout
+      }
+    }
+
     const rawRefreshToken = req.cookies?.[REFRESH_TOKEN_COOKIE] as
       | string
       | undefined;

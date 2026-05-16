@@ -6,7 +6,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "build": "tsc",
+    "db:generate": "prisma generate",
+    "postinstall": "prisma generate",
+    "build": "prisma generate && tsc",
     "start": "node dist/src/server.js",
     "seed": "node prisma/seeds/seed.js",
     "seed:dev": "ts-node prisma/seeds/seed.ts",
