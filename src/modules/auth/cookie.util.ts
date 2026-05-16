@@ -8,7 +8,8 @@ const isProduction = process.env.NODE_ENV === 'production';
 const baseCookieOptions = (): CookieOptions => ({
   httpOnly: true,
   secure: isProduction,
-  sameSite: isProduction ? 'strict' : 'lax',
+  // Production: frontend and API are on different domains — need SameSite=None + Secure.
+  sameSite: isProduction ? 'none' : 'lax',
 });
 
 export const getAccessTokenCookieOptions = (): CookieOptions => {
@@ -26,7 +27,8 @@ export const getRefreshTokenCookieOptions = (): CookieOptions => {
 
   return {
     ...baseCookieOptions(),
-    path: '/auth',
+    // Path "/" so cookies work with Vite /api proxy and direct API calls.
+    path: '/',
     maxAge: maxAgeDays * 24 * 60 * 60 * 1000,
   };
 };

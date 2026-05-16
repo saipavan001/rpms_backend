@@ -2,7 +2,7 @@ import prisma from '../../config/prisma';
 import bcrypt from 'bcrypt';
 import { ROLE_CODES } from '../../constants/roles';
 import { getRolesByCodes } from '../roles/role.service';
-import { createAuthSession } from './token.service';
+import { createAuthSessionFromLogin } from './token.service';
 
 export type EmployeeSignupInput = {
   employee_code: string;
@@ -30,7 +30,7 @@ export const loginUser = async (username: string, password: string) => {
     data: { last_login_at: new Date() },
   });
 
-  return createAuthSession(user.id, user.username);
+  return createAuthSessionFromLogin(user.id, user.username);
 };
 
 export const registerEmployeeAccount = async (input: EmployeeSignupInput) => {
@@ -107,5 +107,5 @@ export const registerEmployeeAccount = async (input: EmployeeSignupInput) => {
     data: { last_login_at: new Date() },
   });
 
-  return createAuthSession(user.id, user.username);
+  return createAuthSessionFromLogin(user.id, user.username);
 };

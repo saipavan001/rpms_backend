@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { loginUser, registerEmployeeAccount } from './auth.service';
 import { clearAuthCookies, REFRESH_TOKEN_COOKIE, setAuthCookies } from './cookie.util';
 import {
-  revokeRefreshTokenByValue,
+  revokeSessionsByRefreshToken,
   rotateAuthSession,
 } from './token.service';
 import { getUserProfile } from '../users/user.service';
@@ -93,7 +93,7 @@ export const logout = async (req: Request, res: Response) => {
       | string
       | undefined;
 
-    await revokeRefreshTokenByValue(rawRefreshToken);
+    await revokeSessionsByRefreshToken(rawRefreshToken);
     clearAuthCookies(res);
 
     return res.status(200).json({

@@ -70,6 +70,27 @@ export const revokeRefreshTokenByValue = async (rawRefreshToken: string | undefi
   });
 };
 
+/** Logout: invalidate every active session for this user. */
+export const revokeSessionsByRefreshToken = async (
+  rawRefreshToken: string | undefined
+) => {
+  if (!rawRefreshToken) {
+    return;
+  }
+
+  const record = await prisma.refreshToken.findFirst({
+    where: { token_hash: hashToken(rawRefreshToken) },
+    select: { user_id: true },
+  });
+
+  if (record) {
+    await revokeAllUserRefreshTokens(record.user_id);
+    return;
+  }
+
+  await revokeRefreshTokenByValue(rawRefreshToken);
+};
+
 export const revokeAllUserRefreshTokens = async (userId: string) => {
   await prisma.refreshToken.updateMany({
     where: { user_id: userId, revoked_at: null },
@@ -106,12 +127,17 @@ export type AuthSessionResult = {
 
 export const createAuthSession = async (
   userId: string,
-  username: string
+  username: string,
+  options?: { revokeExistingSessions?: boolean }
 ): Promise<AuthSessionResult> => {
   const profile = await getUserProfile(userId);
 
   if (!profile || profile.roles.length === 0) {
     throw new Error('User has no active roles assigned');
+  }
+
+  if (options?.revokeExistingSessions) {
+    await revokeAllUserRefreshTokens(userId);
   }
 
   const accessToken = signAccessToken(userId, username);
@@ -139,5 +165,14 @@ export const rotateAuthSession = async (
     data: { revoked_at: new Date() },
   });
 
-  return createAuthSession(record.user.id, record.user.username);
+  return createAuthSession(record.user.id, record.user.username, {
+    revokeExistingSessions: false,
+  });
 };
+
+/** Fresh sign-in: one active refresh token per user. */
+export const createAuthSessionFromLogin = async (
+  userId: string,
+  username: string
+) =>
+  createAuthSession(userId, username, { revokeExistingSessions: true });
