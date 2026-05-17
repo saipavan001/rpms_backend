@@ -6,6 +6,7 @@ import {
   CreateEmployeeInput,
   deleteEmployee,
   getEmployeeById,
+  getEmployeeForUser,
   getEmployees,
   updateEmployee,
 } from './employee.service';
@@ -191,6 +192,34 @@ export const list = async (req: Request, res: Response) => {
   try {
     const isActive = parseIsActiveQuery(req.query.is_active);
     const result = await getEmployees(isActive);
+
+    return res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    return handlePrismaError(error, res);
+  }
+};
+
+export const getMine = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as Request & { userId?: string }).userId;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required',
+      });
+    }
+
+    const result = await getEmployeeForUser(userId);
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        message: 'No employee record linked to your account',
+      });
+    }
 
     return res.status(200).json({
       success: true,

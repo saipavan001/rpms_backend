@@ -1,6 +1,7 @@
 import prisma from '../../config/prisma';
 import { Prisma } from '@prisma/client';
 import { parseFlexibleDate } from '../../utils/parse-date';
+import { invalidateRpmsMasters } from '../../cache/invalidation';
 
 export type CreateEmployeeInput = {
   employee_code: string;
@@ -33,7 +34,7 @@ const employeeInclude = {
 } satisfies Prisma.EmployeeInclude;
 
 export const createEmployee = async (data: CreateEmployeeInput) => {
-  return prisma.employee.create({
+  const created = await prisma.employee.create({
     data: {
       employee_code: data.employee_code.trim(),
       employee_name: data.employee_name.trim(),
@@ -47,6 +48,8 @@ export const createEmployee = async (data: CreateEmployeeInput) => {
     },
     include: employeeInclude,
   });
+  await invalidateRpmsMasters();
+  return created;
 };
 
 export const getEmployees = async (isActive?: boolean) => {
@@ -65,6 +68,19 @@ export const getEmployeeById = async (id: string) => {
     where: { id },
     include: employeeInclude,
   });
+};
+
+export const getEmployeeForUser = async (userId: string) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { employee_id: true },
+  });
+
+  if (!user?.employee_id) {
+    return null;
+  }
+
+  return getEmployeeById(user.employee_id);
 };
 
 export const updateEmployee = async (
@@ -103,18 +119,22 @@ export const updateEmployee = async (
     updateData.is_active = data.is_active;
   }
 
-  return prisma.employee.update({
+  const updated = await prisma.employee.update({
     where: { id },
     data: updateData,
     include: employeeInclude,
   });
+  await invalidateRpmsMasters();
+  return updated;
 };
 
 export const deleteEmployee = async (id: string) => {
-  return prisma.employee.delete({
+  const deleted = await prisma.employee.delete({
     where: { id },
     include: employeeInclude,
   });
+  await invalidateRpmsMasters();
+  return deleted;
 };
 
 export type BulkCreateEmployeeResult = {

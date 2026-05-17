@@ -5,6 +5,7 @@ import {
   deleteUser,
   getUserById,
   getUsers,
+  setUserRoles,
   updateUser,
 } from './user.service';
 
@@ -117,18 +118,11 @@ export const create = async (req: Request, res: Response) => {
       });
     }
 
-    if (!Array.isArray(role_codes) || role_codes.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'role_codes must be a non-empty array',
-      });
-    }
-
     const user = await createUser({
       username,
       password,
       employee_id: employee_id || null,
-      role_codes,
+      role_codes: Array.isArray(role_codes) ? role_codes : [],
       is_active,
     });
 
@@ -161,6 +155,41 @@ export const update = async (req: Request, res: Response) => {
       is_active,
     });
 
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: sanitizeUser(user),
+    });
+  } catch (error) {
+    return handleError(error, res);
+  }
+};
+
+export const assignRoles = async (req: Request, res: Response) => {
+  try {
+    const id = getRouteId(req);
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user id',
+      });
+    }
+
+    const { role_codes } = req.body;
+    if (!Array.isArray(role_codes) || role_codes.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'role_codes must be a non-empty array',
+      });
+    }
+
+    const user = await setUserRoles(id, role_codes);
     if (!user) {
       return res.status(404).json({
         success: false,

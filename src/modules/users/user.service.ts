@@ -3,6 +3,10 @@ import bcrypt from 'bcrypt';
 import { Prisma } from '@prisma/client';
 import { ROLE_CODES } from '../../constants/roles';
 import { getRolesByCodes } from '../roles/role.service';
+import {
+  invalidateProjectListCaches,
+  invalidateRpmsMasters,
+} from '../../cache/invalidation';
 
 const userInclude = {
   employee: {
@@ -39,46 +43,72 @@ export type UpdateUserInput = {
   is_active?: boolean;
 };
 
+const LINKED_EMPLOYEE_ROLE_CODES: string[] = [
+  ROLE_CODES.ADMIN,
+  ROLE_CODES.EMPLOYEE,
+  ROLE_CODES.RESEARCHER,
+];
+
+const ADMINISTRATIVE_ONLY_ROLE_CODES: string[] = [
+  ROLE_CODES.ADMIN,
+  ROLE_CODES.GUEST,
+  ROLE_CODES.RESEARCH_ADMIN,
+  ROLE_CODES.COMMITTEE_MEMBER,
+];
+
 const assertValidRoleCodes = async (
   roleCodes: string[],
   employeeId: string | null | undefined
 ) => {
-  if (!roleCodes.length) {
-    throw new Error('At least one role is required');
+  const uniqueCodes = [...new Set(roleCodes)];
+
+  if (!uniqueCodes.length) {
+    return [];
   }
 
-  if (roleCodes.length > 1) {
-    throw new Error('Select only one account type');
-  }
-
-  if (roleCodes.includes(ROLE_CODES.SUPER_ADMIN)) {
+  if (uniqueCodes.includes(ROLE_CODES.SUPER_ADMIN)) {
     throw new Error('SUPER_ADMIN role cannot be assigned through this API');
   }
 
-  const roles = await getRolesByCodes(roleCodes);
+  if (uniqueCodes.includes(ROLE_CODES.GUEST) && uniqueCodes.length > 1) {
+    throw new Error('Guest account cannot be combined with other roles');
+  }
 
-  if (roles.length !== roleCodes.length) {
+  const roles = await getRolesByCodes(uniqueCodes);
+
+  if (roles.length !== uniqueCodes.length) {
     throw new Error('One or more role codes are invalid or inactive');
   }
 
-  const roleCode = roleCodes[0];
-
-  const linkedEmployeeRoles: string[] = [ROLE_CODES.ADMIN, ROLE_CODES.EMPLOYEE];
-  const administrativeRoles: string[] = [ROLE_CODES.ADMIN, ROLE_CODES.GUEST];
-
   if (employeeId) {
-    if (roleCode === ROLE_CODES.GUEST) {
+    if (uniqueCodes.includes(ROLE_CODES.GUEST)) {
       throw new Error('Guest accounts cannot be linked to an employee');
     }
-    if (!linkedEmployeeRoles.includes(roleCode)) {
-      throw new Error('Linked employees must be Administrator or Employee account');
+    if (uniqueCodes.includes(ROLE_CODES.COMMITTEE_MEMBER)) {
+      throw new Error(
+        'Committee member role requires an administrative login without employee link'
+      );
+    }
+    const invalid = uniqueCodes.filter((code) => !LINKED_EMPLOYEE_ROLE_CODES.includes(code));
+    if (invalid.length) {
+      throw new Error(
+        `Not allowed for employee-linked accounts: ${invalid.join(', ')}`
+      );
     }
   } else {
-    if (roleCode === ROLE_CODES.EMPLOYEE) {
-      throw new Error('Employee account requires a linked employee record');
+    const needsEmployee = uniqueCodes.filter(
+      (code) => code === ROLE_CODES.EMPLOYEE || code === ROLE_CODES.RESEARCHER
+    );
+    if (needsEmployee.length) {
+      throw new Error(
+        'Employee and researcher roles require a linked employee record'
+      );
     }
-    if (!administrativeRoles.includes(roleCode)) {
-      throw new Error('Administrative users must be Administrator or Guest');
+    const invalid = uniqueCodes.filter(
+      (code) => !ADMINISTRATIVE_ONLY_ROLE_CODES.includes(code)
+    );
+    if (invalid.length) {
+      throw new Error(`Invalid administrative role: ${invalid.join(', ')}`);
     }
   }
 
@@ -135,21 +165,69 @@ export const createUser = async (data: CreateUserInput) => {
 
   const password_hash = await bcrypt.hash(data.password, 10);
 
-  return prisma.user.create({
+  const user = await prisma.user.create({
     data: {
       username: data.username.trim(),
       password_hash,
       employee_id: data.employee_id ?? null,
       is_active: data.is_active ?? true,
-      user_roles: {
-        create: roles.map((role) => ({
-          role_id: role.id,
-          is_active: true,
-        })),
-      },
+      ...(roles.length
+        ? {
+            user_roles: {
+              create: roles.map((role) => ({
+                role_id: role.id,
+                is_active: true,
+              })),
+            },
+          }
+        : {}),
     },
     include: userInclude,
   });
+  await invalidateRpmsMasters();
+  await invalidateProjectListCaches();
+  return user;
+};
+
+export const setUserRoles = async (id: string, role_codes: string[]) => {
+  const existing = await prisma.user.findUnique({
+    where: { id },
+    include: {
+      user_roles: {
+        include: { role: { select: { code: true } } },
+      },
+    },
+  });
+
+  if (!existing) {
+    return null;
+  }
+
+  const isSuperAdmin = existing.user_roles.some(
+    (ur) => ur.role.code === ROLE_CODES.SUPER_ADMIN && ur.is_active
+  );
+
+  if (isSuperAdmin) {
+    throw new Error('Cannot change roles for a SUPER_ADMIN user');
+  }
+
+  const roles = await assertValidRoleCodes(role_codes, existing.employee_id);
+  if (!roles.length) {
+    throw new Error('At least one role is required');
+  }
+
+  await prisma.userRole.deleteMany({ where: { user_id: id } });
+  await prisma.userRole.createMany({
+    data: roles.map((role) => ({
+      user_id: id,
+      role_id: role.id,
+      is_active: true,
+    })),
+  });
+
+  await invalidateRpmsMasters();
+  await invalidateProjectListCaches();
+  return getUserById(id);
 };
 
 export const updateUser = async (id: string, data: UpdateUserInput) => {
@@ -214,11 +292,14 @@ export const updateUser = async (id: string, data: UpdateUserInput) => {
     });
   }
 
-  return prisma.user.update({
+  const user = await prisma.user.update({
     where: { id },
     data: updateData,
     include: userInclude,
   });
+  await invalidateRpmsMasters();
+  await invalidateProjectListCaches();
+  return user;
 };
 
 export const deleteUser = async (id: string) => {
@@ -255,10 +336,13 @@ export const deleteUser = async (id: string) => {
 
   await prisma.userRole.deleteMany({ where: { user_id: id } });
 
-  return prisma.user.delete({
+  const deleted = await prisma.user.delete({
     where: { id },
     include: userInclude,
   });
+  await invalidateRpmsMasters();
+  await invalidateProjectListCaches();
+  return deleted;
 };
 
 export const getUserProfile = async (userId: string) => {

@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
+import { seedRpmsMasters } from './rpms-masters.seed';
 
 const prisma = new PrismaClient();
 
@@ -80,6 +81,8 @@ async function main() {
       is_active: true
     }
   });
+
+  await seedRpmsMasters(prisma);
 
   console.log('Roles and Super Admin seeded successfully');
 }

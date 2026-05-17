@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.middleware';
 import { requireSuperAdmin } from '../../middleware/authorize.middleware';
-import { create, getById, list, remove, update } from './user.controller';
+import { assignRoles, create, getById, list, remove, update } from './user.controller';
 
 const router = Router();
 
@@ -11,6 +11,7 @@ router.get('/', list);
 router.get('/:id', getById);
 router.post('/', create);
 router.put('/:id', update);
+router.put('/:id/roles', assignRoles);
 router.delete('/:id', remove);
 
 export default router;

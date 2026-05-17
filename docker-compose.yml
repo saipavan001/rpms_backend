@@ -1,0 +1,14 @@
+name: unify-erp
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: unify-redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - unify_redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  unify_redis_data:

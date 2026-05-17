@@ -65,6 +65,8 @@ model OrganizationUnit {
   child_ous OrganizationUnit[] @relation("OUHierarchy")
 
   employees Employee[]
+  approval_committee ApprovalCommittee?
+  research_projects  ResearchProject[]
 }
 
 
@@ -93,6 +95,7 @@ model Employee {
   organization_unit OrganizationUnit @relation(fields: [ou_id],references: [id])
 
   user User?
+  project_team_members ProjectTeamMember[]
 }
 
 
@@ -131,6 +134,8 @@ model User {
 
   user_roles UserRole[]
   refresh_tokens RefreshToken[]
+  committee_memberships ApprovalCommitteeMember[]
+  pi_research_projects ResearchProject[] @relation("ProjectPrincipalInvestigator")
 }
 
 
@@ -195,4 +200,333 @@ model AuditLog {
   @@index([user_id, created_at(sort: Desc)])
   @@index([entity_type, entity_id])
   @@index([action, created_at(sort: Desc)])
+}
+
+// ─── RPMS (Research Project Management) ───────────────────────────────────
+
+enum ResearchProjectStatus {
+  DRAFT
+  REVISION_REQUESTED
+  SUBMITTED_TO_COMMITTEE
+  UNDER_COMMITTEE_REVIEW
+  COMMITTEE_APPROVED
+  COMMITTEE_REJECTED
+}
+
+enum CommitteeWorkflowMode {
+  PARALLEL_THEN_CHAIR
+}
+
+enum ProjectTeamRole {
+  PI
+  CO_PI
+  RESEARCH_STAFF
+  SCHOLAR
+}
+
+enum ClearanceStatus {
+  DRAFT
+  SUBMITTED
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model ProjectType {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  projects ResearchProject[]
+}
+
+model FundingAgency {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  projects       ResearchProject[]
+  project_links  ProjectFundingAgency[]
+  budget_lines   ProjectBudgetLine[]
+}
+
+model BudgetCategory {
+  id            String   @id @default(uuid())
+  code          String   @unique
+  name          String
+  description   String?
+  display_order Int      @default(0)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  heads        BudgetHead[]
+  budget_lines ProjectBudgetLine[]
+}
+
+model BudgetHead {
+  id                 String   @id @default(uuid())
+  budget_category_id String
+  code               String
+  name               String
+  description        String?
+  display_order      Int      @default(0)
+  is_active          Boolean  @default(true)
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  budget_category BudgetCategory      @relation(fields: [budget_category_id], references: [id], onDelete: Cascade)
+  budget_lines    ProjectBudgetLine[]
+
+  @@unique([budget_category_id, code])
+  @@index([budget_category_id])
+}
+
+model CommitteeRole {
+  id            String   @id @default(uuid())
+  code          String   @unique
+  name          String
+  description   String?
+  display_order Int      @default(0)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  members ApprovalCommitteeMember[]
+}
+
+model ApprovalCommittee {
+  id             String                @id @default(uuid())
+  ou_id          String
+  code           String
+  name           String
+  description    String?
+  workflow_mode  CommitteeWorkflowMode @default(PARALLEL_THEN_CHAIR)
+  is_active      Boolean               @default(true)
+  created_at     DateTime              @default(now())
+  updated_at     DateTime              @updatedAt
+
+  organization_unit OrganizationUnit      @relation(fields: [ou_id], references: [id])
+  members           ApprovalCommitteeMember[]
+  projects          ResearchProject[]
+
+  @@unique([ou_id])
+  @@index([ou_id])
+}
+
+model ApprovalCommitteeMember {
+  id                String   @id @default(uuid())
+  committee_id      String
+  user_id           String
+  committee_role_id String
+  display_order     Int      @default(0)
+  review_sequence   Int?
+  is_active         Boolean  @default(true)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  committee      ApprovalCommittee @relation(fields: [committee_id], references: [id], onDelete: Cascade)
+  user           User              @relation(fields: [user_id], references: [id])
+  committee_role CommitteeRole     @relation(fields: [committee_role_id], references: [id])
+
+  @@unique([committee_id, user_id])
+  @@index([user_id])
+}
+
+model ResearchProject {
+  id          String @id @default(uuid())
+  project_code String @unique
+
+  title            String
+  project_type_id  String?
+  department_ou_id String
+  abstract         String? @db.Text
+  keywords         String?
+
+  tentative_start_date DateTime? @db.Date
+  tentative_end_date   DateTime? @db.Date
+
+  funding_agency_id   String?
+  funding_type        String?
+  sponsorship_details String? @db.Text
+  grant_reference     String?
+
+  pi_user_id     String
+  pi_employee_id String?
+
+  status ResearchProjectStatus @default(DRAFT)
+
+  include_budget_estimate         Boolean @default(false)
+  section_basic_complete          Boolean @default(false)
+  section_infrastructure_complete Boolean @default(false)
+  section_clearance_complete      Boolean @default(false)
+  section_budget_complete         Boolean @default(false)
+
+  infrastructure_required    Boolean @default(false)
+  laboratory_requirements    String? @db.Text
+  equipment_requirements     String? @db.Text
+  workspace_requirements     String? @db.Text
+  computing_requirements     String? @db.Text
+  university_support_notes   String? @db.Text
+
+  approval_committee_id String?
+  submitted_at          DateTime?
+  revision_notes        String?   @db.Text
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  project_type       ProjectType?       @relation(fields: [project_type_id], references: [id])
+  department_ou      OrganizationUnit   @relation(fields: [department_ou_id], references: [id])
+  funding_agency     FundingAgency?     @relation(fields: [funding_agency_id], references: [id])
+  approval_committee ApprovalCommittee? @relation(fields: [approval_committee_id], references: [id])
+  pi_user            User               @relation("ProjectPrincipalInvestigator", fields: [pi_user_id], references: [id])
+
+  funding_agencies ProjectFundingAgency[]
+  team_members    ProjectTeamMember[]
+  clearances      ProjectClearance[]
+  budget_years    ProjectBudgetYear[]
+  status_history  ProjectStatusHistory[]
+
+  @@index([status])
+  @@index([pi_user_id])
+  @@index([department_ou_id])
+}
+
+model ProjectTeamMember {
+  id                 String          @id @default(uuid())
+  project_id         String
+  role               ProjectTeamRole
+  employee_id        String?
+  member_name        String?
+  designation        String?
+  created_at         DateTime        @default(now())
+
+  project  ResearchProject @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  employee Employee?       @relation(fields: [employee_id], references: [id])
+
+  @@index([project_id])
+}
+
+model ProjectClearance {
+  id                   String           @id @default(uuid())
+  project_id           String
+  clearance_type       String
+  is_required          Boolean          @default(false)
+  committee_name       String?
+  application_number   String?
+  status               ClearanceStatus  @default(DRAFT)
+  approval_date        DateTime?        @db.Date
+  notes                String?          @db.Text
+  created_at           DateTime         @default(now())
+  updated_at           DateTime         @updatedAt
+
+  project ResearchProject @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  @@unique([project_id, clearance_type])
+}
+
+model ProjectBudgetYear {
+  id           String   @id @default(uuid())
+  project_id   String
+  year_index   Int
+  label        String
+  period_start DateTime @db.Date
+  period_end   DateTime @db.Date
+
+  project ResearchProject  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  lines   ProjectBudgetLine[]
+
+  @@unique([project_id, year_index])
+}
+
+model ProjectFundingAgency {
+  id                String   @id @default(uuid())
+  project_id        String
+  funding_agency_id String
+  created_at        DateTime @default(now())
+
+  project        ResearchProject @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  funding_agency FundingAgency     @relation(fields: [funding_agency_id], references: [id], onDelete: Cascade)
+
+  @@unique([project_id, funding_agency_id])
+  @@index([project_id])
+}
+
+model ProjectBudgetLine {
+  id                 String  @id @default(uuid())
+  budget_year_id     String
+  funding_agency_id  String?
+  budget_category_id String?
+  budget_head_id     String?
+  budget_category    String
+  budget_head        String
+  amount             Decimal @db.Decimal(14, 2)
+  justification      String? @db.Text
+
+  budget_year         ProjectBudgetYear @relation(fields: [budget_year_id], references: [id], onDelete: Cascade)
+  funding_agency      FundingAgency?    @relation(fields: [funding_agency_id], references: [id], onDelete: SetNull)
+  budget_category_ref BudgetCategory?   @relation(fields: [budget_category_id], references: [id], onDelete: SetNull)
+  budget_head_ref     BudgetHead?       @relation(fields: [budget_head_id], references: [id], onDelete: SetNull)
+
+  @@index([budget_head_id])
+  @@index([funding_agency_id])
+}
+
+model ProjectStatusHistory {
+  id         String                @id @default(uuid())
+  project_id String
+  from_status ResearchProjectStatus?
+  to_status  ResearchProjectStatus
+  actor_user_id String?
+  comments   String? @db.Text
+  created_at DateTime @default(now())
+
+  project ResearchProject @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  @@index([project_id, created_at(sort: Desc)])
+}
+
+enum ProposalExportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ProposalExportFormat {
+  XLSX
+  JSON
+}
+
+enum ProposalExportScope {
+  ALL
+  SELECTED
+  SINGLE
+}
+
+model ProposalExportJob {
+  id            String               @id @default(uuid())
+  user_id       String
+  status        ProposalExportStatus @default(PENDING)
+  format        ProposalExportFormat @default(XLSX)
+  scope         ProposalExportScope
+  project_ids   String[]             @default([])
+  file_name     String?
+  file_path     String?
+  file_size     Int?
+  error_message String?              @db.Text
+  bull_job_id   String?
+  created_at    DateTime             @default(now())
+  completed_at  DateTime?
+
+  @@index([user_id, created_at(sort: Desc)])
 }

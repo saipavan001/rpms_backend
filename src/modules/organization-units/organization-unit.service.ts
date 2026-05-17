@@ -1,5 +1,11 @@
 import prisma from '../../config/prisma';
 import { Prisma } from '@prisma/client';
+import { cached } from '../../cache/cache.service';
+import { CACHE_TTL, cacheKeys } from '../../cache/cache-keys';
+import { invalidateOrgUnitCaches } from '../../cache/invalidation';
+
+const orgUnitsFilterKey = (isActive?: boolean) =>
+  isActive === undefined ? 'all' : isActive ? 'active' : 'inactive';
 
 export type CreateOrganizationUnitInput = {
   code: string;
@@ -33,7 +39,7 @@ const organizationUnitInclude = {
 export const createOrganizationUnit = async (
   data: CreateOrganizationUnitInput
 ) => {
-  return prisma.organizationUnit.create({
+  const created = await prisma.organizationUnit.create({
     data: {
       code: data.code.trim(),
       name: data.name.trim(),
@@ -45,24 +51,33 @@ export const createOrganizationUnit = async (
     },
     include: organizationUnitInclude,
   });
+  await invalidateOrgUnitCaches();
+  return created;
 };
 
 export const getOrganizationUnits = async (isActive?: boolean) => {
   const where =
     isActive === undefined ? {} : { is_active: isActive };
 
-  return prisma.organizationUnit.findMany({
-    where,
-    orderBy: { name: 'asc' },
-    include: organizationUnitInclude,
-  });
+  return cached(
+    cacheKeys.orgUnits(orgUnitsFilterKey(isActive)),
+    CACHE_TTL.orgStructure,
+    () =>
+      prisma.organizationUnit.findMany({
+        where,
+        orderBy: { name: 'asc' },
+        include: organizationUnitInclude,
+      })
+  );
 };
 
 export const getOrganizationUnitById = async (id: string) => {
-  return prisma.organizationUnit.findUnique({
-    where: { id },
-    include: organizationUnitInclude,
-  });
+  return cached(cacheKeys.orgUnit(id), CACHE_TTL.orgStructure, () =>
+    prisma.organizationUnit.findUnique({
+      where: { id },
+      include: organizationUnitInclude,
+    })
+  );
 };
 
 export const updateOrganizationUnit = async (
@@ -98,16 +113,20 @@ export const updateOrganizationUnit = async (
     updateData.is_active = data.is_active;
   }
 
-  return prisma.organizationUnit.update({
+  const updated = await prisma.organizationUnit.update({
     where: { id },
     data: updateData,
     include: organizationUnitInclude,
   });
+  await invalidateOrgUnitCaches(id);
+  return updated;
 };
 
 export const deleteOrganizationUnit = async (id: string) => {
-  return prisma.organizationUnit.delete({
+  const deleted = await prisma.organizationUnit.delete({
     where: { id },
     include: organizationUnitInclude,
   });
+  await invalidateOrgUnitCaches(id);
+  return deleted;
 };

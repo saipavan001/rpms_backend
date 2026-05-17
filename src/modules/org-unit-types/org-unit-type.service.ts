@@ -1,5 +1,11 @@
 import prisma from '../../config/prisma';
 import { Prisma } from '@prisma/client';
+import { cached } from '../../cache/cache.service';
+import { CACHE_TTL, cacheKeys } from '../../cache/cache-keys';
+import { invalidateOrgUnitTypeCaches } from '../../cache/invalidation';
+
+const orgUnitTypesFilterKey = (isActive?: boolean) =>
+  isActive === undefined ? 'all' : isActive ? 'active' : 'inactive';
 
 export type CreateOrgUnitTypeInput = {
   code: string;
@@ -16,7 +22,7 @@ export type UpdateOrgUnitTypeInput = {
 };
 
 export const createOrgUnitType = async (data: CreateOrgUnitTypeInput) => {
-  return prisma.organizationUnitType.create({
+  const created = await prisma.organizationUnitType.create({
     data: {
       code: data.code.trim(),
       name: data.name.trim(),
@@ -24,22 +30,31 @@ export const createOrgUnitType = async (data: CreateOrgUnitTypeInput) => {
       is_active: data.is_active ?? true,
     },
   });
+  await invalidateOrgUnitTypeCaches();
+  return created;
 };
 
 export const getOrgUnitTypes = async (isActive?: boolean) => {
   const where =
     isActive === undefined ? {} : { is_active: isActive };
 
-  return prisma.organizationUnitType.findMany({
-    where,
-    orderBy: { name: 'asc' },
-  });
+  return cached(
+    cacheKeys.orgUnitTypes(orgUnitTypesFilterKey(isActive)),
+    CACHE_TTL.orgStructure,
+    () =>
+      prisma.organizationUnitType.findMany({
+        where,
+        orderBy: { name: 'asc' },
+      })
+  );
 };
 
 export const getOrgUnitTypeById = async (id: string) => {
-  return prisma.organizationUnitType.findUnique({
-    where: { id },
-  });
+  return cached(cacheKeys.orgUnitType(id), CACHE_TTL.orgStructure, () =>
+    prisma.organizationUnitType.findUnique({
+      where: { id },
+    })
+  );
 };
 
 export const updateOrgUnitType = async (
@@ -62,14 +77,18 @@ export const updateOrgUnitType = async (
     updateData.is_active = data.is_active;
   }
 
-  return prisma.organizationUnitType.update({
+  const updated = await prisma.organizationUnitType.update({
     where: { id },
     data: updateData,
   });
+  await invalidateOrgUnitTypeCaches(id);
+  return updated;
 };
 
 export const deleteOrgUnitType = async (id: string) => {
-  return prisma.organizationUnitType.delete({
+  const deleted = await prisma.organizationUnitType.delete({
     where: { id },
   });
+  await invalidateOrgUnitTypeCaches(id);
+  return deleted;
 };
